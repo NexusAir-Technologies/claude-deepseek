@@ -4,6 +4,7 @@ const { homedir } = require('os')
 const { delimiter, dirname, join, resolve } = require('path')
 const { spawnSync } = require('child_process')
 
+const originalCwd = process.cwd()
 const projectDir = resolve(dirname(__dirname))
 const configDir = join(homedir(), '.deepseek-claude')
 const settingsPath = join(configDir, 'settings.json')
@@ -60,7 +61,7 @@ process.env.PATH = [
 
 const bun = resolveBunBinary()
 const result = spawnSync(bun, ['run', join(projectDir, 'src/dev-entry.ts')].concat(process.argv.slice(2)), {
-  cwd: projectDir,
+  cwd: originalCwd,
   env: process.env,
   stdio: 'inherit',
 })
