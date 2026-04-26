@@ -1,12 +1,12 @@
 {
   "name": "@nexusair-technologies/claude-deepseek",
-  "version": "0.1.3-beta.0",
+  "version": "0.1.3-beta.1",
   "private": false,
   "description": "DeepSeek Claude CLI with isolated configuration directory.",
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "bin": {
-    "deepseek-claude": "./bin/deepseek-claude.mjs"
+    "deepseek-claude": "./bin/deepseek-claude.cjs"
   },
   "packageManager": "bun@1.3.5",
   "repository": {
