@@ -136,17 +136,29 @@ export function CondensedLogo() {
   } else {
     t11 = $[22];
   }
+  const rawSloganLines = [
+    ' ____  _____ _____ ____  ____  _____ _____ _  __',
+    '|  _ \\| ____| ____|  _ \\/ ___|| ____| ____| |/ /',
+    "| | | |  _| |  _| | |_) \\___ \\|  _| |  _| | ' / ",
+    '| |_| | |___| |___|  __/ ___) | |___| |___| . \\',
+    '|____/|_____|_____|_|   |____/|_____|_____|_|\\_\\',
+  ];
+  const sloganWidth = Math.min(textWidth, Math.max(...rawSloganLines.map(stringWidth)));
+  const sloganLines = rawSloganLines.map(line => truncate(line, sloganWidth));
   let t12;
-  if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9) {
-    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="flex-start">{t4}<Box flexDirection="column" marginTop={1}>{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
+  if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9 || $[28] !== sloganLines || $[29] !== sloganWidth) {
+    const slogan = sloganLines.map((line, index) => <Text key={index} color="permission" dimColor={index > 0}>{line}</Text>);
+    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="flex-start">{t4}<Box flexDirection="column" marginTop={1}>{t6}{t7}{t9}{t10}{t11}<Box flexDirection="column" alignSelf="flex-end" width={sloganWidth}>{slogan}</Box></Box></Box></OffscreenFreeze>;
     $[23] = t10;
     $[24] = t11;
     $[25] = t6;
     $[26] = t7;
     $[27] = t9;
-    $[28] = t12;
+    $[28] = sloganLines;
+    $[29] = sloganWidth;
+    $[30] = t12;
   } else {
-    t12 = $[28];
+    t12 = $[30];
   }
   return t12;
 }

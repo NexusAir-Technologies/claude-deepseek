@@ -15,6 +15,8 @@ const defaultSettings = {
     DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK: '1',
+    CLAUDE_CODE_SUBAGENT_MODEL: 'deepseek-v4-pro',
     MCP_TIMEOUT: '60000',
     API_TIMEOUT_MS: '3000000',
     ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
@@ -51,6 +53,9 @@ if (!existsSync(settingsPath)) {
 }
 
 process.env.CLAUDE_CONFIG_DIR = configDir
+process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
+process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
+process.env.CLAUDE_CODE_SUBAGENT_MODEL ||= 'deepseek-v4-pro'
 process.env.PATH = [
   join(projectDir, 'node_modules', '.bin'),
   join(homedir(), '.bun', 'bin'),

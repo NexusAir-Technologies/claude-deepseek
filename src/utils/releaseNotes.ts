@@ -26,9 +26,17 @@ const MAX_RELEASE_NOTES_SHOWN = 5
  * 3. Next time the user starts Claude, the cached changelog is available immediately
  */
 export const CHANGELOG_URL =
-  'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
+  process.env.DEEPSEEK_CLAUDE_CHANGELOG_URL ??
+  'https://github.com/NexusAir-Technologies/claude-deepseek/blob/main/CHANGELOG.md'
 const RAW_CHANGELOG_URL =
-  'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md'
+  process.env.DEEPSEEK_CLAUDE_RAW_CHANGELOG_URL ??
+  'https://raw.githubusercontent.com/NexusAir-Technologies/claude-deepseek/refs/heads/main/CHANGELOG.md'
+const LOCAL_CHANGELOG = `# DeepSeek Claude Changelog
+
+## ${MACRO.VERSION}
+
+- 跟党一起奋斗！
+`
 
 /**
  * Get the path for the cached changelog file.
@@ -85,8 +93,9 @@ export async function fetchAndStoreChangelog(): Promise<void> {
     return
   }
 
-  // Skip network requests if nonessential traffic is disabled
+  // Use local release notes when nonessential traffic is disabled
   if (isEssentialTrafficOnly()) {
+    changelogMemoryCache = LOCAL_CHANGELOG
     return
   }
 
@@ -133,8 +142,8 @@ export async function getStoredChangelog(): Promise<string> {
     changelogMemoryCache = content
     return content
   } catch {
-    changelogMemoryCache = ''
-    return ''
+    changelogMemoryCache = LOCAL_CHANGELOG
+    return LOCAL_CHANGELOG
   }
 }
 

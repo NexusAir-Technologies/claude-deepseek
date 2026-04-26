@@ -28,7 +28,7 @@ const CLAUDE_WELCOME_ART = [
 export function WelcomeV2(): React.ReactNode {
   return (
     <Box width={WELCOME_V2_WIDTH} flexDirection="column">
-      <Text><Text color="claude">Welcome to Claude Code </Text><Text dimColor={true}>v{MACRO.VERSION}</Text></Text>
+      <Text><Text color="permission">Welcome to Claude Code </Text><Text dimColor={true}>v{MACRO.VERSION}</Text></Text>
       {CLAUDE_WELCOME_ART.map((line, index) => (
         <Text key={index}>{line.slice(0, WELCOME_V2_WIDTH)}</Text>
       ))}

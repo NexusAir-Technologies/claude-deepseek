@@ -2,6 +2,7 @@ import { feature } from 'bun:bundle'
 import { chmod, open, rename, stat, unlink } from 'fs/promises'
 import mapValues from 'lodash-es/mapValues.js'
 import memoize from 'lodash-es/memoize.js'
+import { homedir } from 'os'
 import { dirname, join, parse } from 'path'
 import { getPlatform } from 'src/utils/platform.js'
 import type { PluginError } from '../../types/plugin.js'
@@ -15,6 +16,7 @@ import {
 } from '../../utils/config.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
 import { getErrnoCode } from '../../utils/errors.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import { safeParseJSON } from '../../utils/json.js'
@@ -61,6 +63,14 @@ import { getProjectMcpServerStatus } from './utils.js'
  */
 export function getEnterpriseMcpFilePath(): string {
   return join(getManagedFilePath(), 'managed-mcp.json')
+}
+
+function getLegacyUserMcpConfigFilePath(): string {
+  return join(homedir(), '.claude.json')
+}
+
+function shouldLoadLegacyUserMcpConfig(): boolean {
+  return getClaudeConfigHomeDir() !== join(homedir(), '.claude')
 }
 
 /**
@@ -961,19 +971,37 @@ export function getMcpConfigsByScope(
     }
     case 'user': {
       const mcpServers = getGlobalConfig().mcpServers
-      if (!mcpServers) {
-        return { servers: {}, errors: [] }
+      const legacyConfig = shouldLoadLegacyUserMcpConfig()
+        ? parseMcpConfigFromFilePath({
+            filePath: getLegacyUserMcpConfigFilePath(),
+            expandVars: true,
+            scope: 'user',
+          })
+        : { config: null, errors: [] }
+      const legacyServers = legacyConfig.config?.mcpServers ?? {}
+
+      if (!mcpServers && Object.keys(legacyServers).length === 0) {
+        return {
+          servers: {},
+          errors: legacyConfig.errors.filter(
+            e => !e.message.startsWith('MCP config file not found'),
+          ),
+        }
       }
 
       const { config, errors } = parseMcpConfig({
-        configObject: { mcpServers },
+        configObject: { mcpServers: { ...legacyServers, ...mcpServers } },
         expandVars: true,
         scope: 'user',
       })
 
+      const nonMissingLegacyErrors = legacyConfig.errors.filter(
+        e => !e.message.startsWith('MCP config file not found'),
+      )
+
       return {
         servers: addScopeToServers(config?.mcpServers, scope),
-        errors,
+        errors: [...nonMissingLegacyErrors, ...errors],
       }
     }
     case 'local': {
