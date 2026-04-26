@@ -1,3 +1,4 @@
+test
 # Claude DeepSeek 安装与使用教程
 
 > [!IMPORTANT]
