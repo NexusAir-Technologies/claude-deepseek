@@ -25,8 +25,11 @@ const defaultSettings = {
 function resolveBunBinary() {
   if (process.env.BUN_BINARY) return process.env.BUN_BINARY
 
+  const binaryName = process.platform === 'win32' ? 'bun.exe' : 'bun'
   const bunCandidates = [
-    join(homedir(), '.bun', 'bin', process.platform === 'win32' ? 'bun.exe' : 'bun'),
+    join(projectDir, 'node_modules', '.bin', binaryName),
+    join(projectDir, 'node_modules', 'bun', 'bin', process.platform === 'win32' ? 'bun.exe' : 'bun'),
+    join(homedir(), '.bun', 'bin', binaryName),
     '/usr/local/bin/bun',
     '/opt/homebrew/bin/bun',
   ]
@@ -47,7 +50,11 @@ if (!existsSync(settingsPath)) {
 }
 
 process.env.CLAUDE_CONFIG_DIR = configDir
-process.env.PATH = [join(homedir(), '.bun', 'bin'), process.env.PATH]
+process.env.PATH = [
+  join(projectDir, 'node_modules', '.bin'),
+  join(homedir(), '.bun', 'bin'),
+  process.env.PATH,
+]
   .filter(Boolean)
   .join(delimiter)
 
