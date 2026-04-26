@@ -1989,6 +1989,9 @@ function relocateToolReferenceSiblings(
 export function normalizeMessagesForAPI(
   messages: Message[],
   tools: Tools = [],
+  options?: {
+    preserveTrailingThinking?: boolean
+  },
 ): (UserMessage | AssistantMessage)[] {
   // Build set of available tool names for filtering unavailable tool references
   const availableToolNames = new Set(tools.map(t => t.name))
@@ -2319,7 +2322,9 @@ export function normalizeMessagesForAPI(
   // conditions a prior pass was meant to handle. Consider unifying into a single
   // pass that cleans content, then validates in one shot.
   const withFilteredThinking =
-    filterTrailingThinkingFromLastAssistant(withFilteredOrphans)
+    options?.preserveTrailingThinking === true
+      ? withFilteredOrphans
+      : filterTrailingThinkingFromLastAssistant(withFilteredOrphans)
   const withFilteredWhitespace =
     filterWhitespaceOnlyAssistantMessages(withFilteredThinking)
   const withNonEmpty = ensureNonEmptyAssistantContent(withFilteredWhitespace)

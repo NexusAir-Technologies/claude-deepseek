@@ -167,6 +167,19 @@ export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
 export const CUSTOM_OFF_SWITCH_MESSAGE =
   'Opus is experiencing high load, please use /model to switch to Sonnet'
 export const API_TIMEOUT_ERROR_MESSAGE = 'Request timed out'
+
+function isDeepSeekAnthropicBaseUrlConfigured(): boolean {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim()
+  if (!baseUrl) {
+    return false
+  }
+  try {
+    const parsed = new URL(baseUrl)
+    return parsed.host === 'api.deepseek.com' && parsed.pathname.includes('/anthropic')
+  } catch {
+    return false
+  }
+}
 export function getPdfTooLargeErrorMessage(): string {
   const limits = `max ${API_PDF_MAX_PAGES} pages, ${formatFileSize(PDF_TARGET_RAW_SIZE)}`
   return getIsNonInteractiveSession()
@@ -732,6 +745,25 @@ export function getAssistantMessageFromError(
     })
   }
 
+  // DeepSeek Anthropic-compat 400: tool call history missing reasoning/thinking context
+  if (
+    error instanceof APIError &&
+    error.status === 400 &&
+    isDeepSeekAnthropicBaseUrlConfigured() &&
+    error.message.toLowerCase().includes('reasoning_content')
+  ) {
+    const rewindInstruction = getIsNonInteractiveSession()
+      ? ''
+      : ' Run /rewind to recover the conversation, then retry.'
+    return createAssistantAPIErrorMessage({
+      content:
+        'DeepSeek 400: 历史消息缺少 reasoning_content，通常发生在 tool 调用后的上下文不完整。请保留 thinking 历史并避免清理相关块。' +
+        rewindInstruction,
+      error: 'invalid_request',
+      errorDetails: error.message,
+    })
+  }
+
   // Check for invalid model name error for subscription users trying to use Opus
   if (
     isClaudeAISubscriber() &&
@@ -1050,6 +1082,16 @@ export function classifyAPIError(error: unknown): string {
     error.message.includes('many-image')
   ) {
     return 'image_too_large'
+  }
+
+  // Tool use errors (400)
+  if (
+    error instanceof APIError &&
+    error.status === 400 &&
+    isDeepSeekAnthropicBaseUrlConfigured() &&
+    error.message.toLowerCase().includes('reasoning_content')
+  ) {
+    return 'deepseek_reasoning_content_missing'
   }
 
   // Tool use errors (400)

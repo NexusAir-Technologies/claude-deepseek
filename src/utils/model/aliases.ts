@@ -3,6 +3,8 @@ export const MODEL_ALIASES = [
   'opus',
   'haiku',
   'best',
+  'deepseek',
+  'flash',
   'sonnet[1m]',
   'opus[1m]',
   'opusplan',

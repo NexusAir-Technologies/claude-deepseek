@@ -12,7 +12,12 @@ coverage/
 *.tmp
 *.swp
 *.swo
+*.bak
 
 .claude/
+.deepseek-claude/
 .idea/
 .vscode/
+.env
+.env.*
+.npmrc

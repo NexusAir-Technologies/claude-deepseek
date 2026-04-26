@@ -16,6 +16,18 @@ export interface PreflightCheckResult {
 }
 async function checkEndpoints(): Promise<PreflightCheckResult> {
   try {
+    const configuredBaseUrl = process.env.ANTHROPIC_BASE_URL?.trim()
+    if (configuredBaseUrl) {
+      try {
+        const host = new URL(configuredBaseUrl).host.toLowerCase()
+        if (host === 'api.deepseek.com') {
+          return { success: true }
+        }
+      } catch {
+        // Ignore invalid URL here and continue normal preflight checks
+      }
+    }
+
     const oauthConfig = getOauthConfig();
     const tokenUrl = new URL(oauthConfig.TOKEN_URL);
     const endpoints = [`${oauthConfig.BASE_API_URL}/api/hello`, `${tokenUrl.origin}/v1/oauth/hello`];

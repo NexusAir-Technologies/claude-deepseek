@@ -1,0 +1,9 @@
+node_modules
+.git
+.claude
+.deepseek-claude
+*.log
+*.tgz
+.DS_Store
+.env
+.env.*

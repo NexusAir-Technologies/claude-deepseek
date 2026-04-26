@@ -27,6 +27,14 @@ export type StatusNoticeDefinition = {
   render: (context: StatusNoticeContext) => React.ReactNode;
 };
 
+function isDeepSeekBaseUrl(): boolean {
+  return process.env.ANTHROPIC_BASE_URL?.trim() === 'https://api.deepseek.com/anthropic';
+}
+
+function hasAnthropicBaseUrl(): boolean {
+  return Boolean(process.env.ANTHROPIC_BASE_URL?.trim());
+}
+
 // Individual notice definitions
 const largeMemoryFilesNotice: StatusNoticeDefinition = {
   id: 'large-memory-files',
@@ -55,7 +63,7 @@ const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
   type: 'warning',
   isActive: () => {
     const authTokenInfo = getAuthTokenSource();
-    return isClaudeAISubscriber() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
+    return isClaudeAISubscriber() && !isDeepSeekBaseUrl() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
   },
   render: () => {
     const authTokenInfo = getAuthTokenSource();
@@ -78,7 +86,7 @@ const apiKeyConflictNotice: StatusNoticeDefinition = {
     } = getAnthropicApiKeyWithSource({
       skipRetrievingKeyFromApiKeyHelper: true
     });
-    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
+    return hasAnthropicBaseUrl() && !isDeepSeekBaseUrl() && !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper');
   },
   render: () => {
     const {
@@ -105,7 +113,7 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
       skipRetrievingKeyFromApiKeyHelper: true
     });
     const authTokenInfo = getAuthTokenSource();
-    return apiKeySource !== 'none' && authTokenInfo.source !== 'none' && !(apiKeySource === 'apiKeyHelper' && authTokenInfo.source === 'apiKeyHelper');
+    return !isDeepSeekBaseUrl() && apiKeySource !== 'none' && authTokenInfo.source !== 'none' && !(apiKeySource === 'apiKeyHelper' && authTokenInfo.source === 'apiKeyHelper');
   },
   render: () => {
     const {
@@ -137,6 +145,19 @@ const bothAuthMethodsNotice: StatusNoticeDefinition = {
       </Box>;
   }
 };
+const deepSeekBaseUrlNotice: StatusNoticeDefinition = {
+  id: 'deepseek-base-url',
+  type: 'warning',
+  isActive: () => hasAnthropicBaseUrl() && !isDeepSeekBaseUrl(),
+  render: () => <Box flexDirection="row" marginTop={1}>
+      <Text color="warning">{figures.warning}</Text>
+      <Text color="warning">
+        DeepSeek Claude 当前未使用官方 Anthropic-compatible API 地址。请使用{' '}
+        https://api.deepseek.com/anthropic，或通过隔离启动脚本重新启动。
+      </Text>
+    </Box>
+};
+
 const largeAgentDescriptionsNotice: StatusNoticeDefinition = {
   id: 'large-agent-descriptions',
   type: 'warning',
@@ -189,7 +210,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, claudeAiSubscriberExternalTokenNotice, apiKeyConflictNotice, bothAuthMethodsNotice, deepSeekBaseUrlNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {

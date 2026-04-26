@@ -17,6 +17,7 @@ import { Select } from './CustomSelect/select.js';
 import { KeyboardShortcutHint } from './design-system/KeyboardShortcutHint.js';
 import { Spinner } from './Spinner.js';
 import TextInput from './TextInput.js';
+import { Login as DeepSeekLogin } from '../commands/login/login.js';
 type Props = {
   onDone(): void;
   startingMessage?: string;
@@ -27,6 +28,8 @@ type OAuthStatus = {
   state: 'idle';
 } // Initial state, waiting to select login method
 | {
+  state: 'deepseek_login';
+} | {
   state: 'platform_setup';
 } // Show platform setup info (Bedrock/Vertex/Foundry)
 | {
@@ -325,7 +328,7 @@ export function ConsoleOAuthFlow({
             </Box>
           </Box>}
       <Box paddingLeft={1} flexDirection="column" gap={1}>
-        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithClaudeAi={setLoginWithClaudeAi} />
+        <OAuthStatusMessage oauthStatus={oauthStatus} mode={mode} startingMessage={startingMessage} forcedMethodMessage={forcedMethodMessage} showPastePrompt={showPastePrompt} pastedCode={pastedCode} setPastedCode={setPastedCode} cursorOffset={cursorOffset} setCursorOffset={setCursorOffset} textInputColumns={textInputColumns} handleSubmitCode={handleSubmitCode} setOAuthStatus={setOAuthStatus} setLoginWithClaudeAi={setLoginWithClaudeAi} onDone={onDone} />
       </Box>
     </Box>;
 }
@@ -343,6 +346,7 @@ type OAuthStatusMessageProps = {
   handleSubmitCode: (value: string, url: string) => void;
   setOAuthStatus: (status: OAuthStatus) => void;
   setLoginWithClaudeAi: (value: boolean) => void;
+  onDone: () => void;
 };
 function OAuthStatusMessage(t0) {
   const $ = _c(51);
@@ -359,12 +363,13 @@ function OAuthStatusMessage(t0) {
     textInputColumns,
     handleSubmitCode,
     setOAuthStatus,
-    setLoginWithClaudeAi
+    setLoginWithClaudeAi,
+    onDone
   } = t0;
   switch (oauthStatus.state) {
     case "idle":
       {
-        const t1 = startingMessage ? startingMessage : "Claude Code can be used with your Claude subscription or billed based on API usage through your Console account.";
+        const t1 = startingMessage ? startingMessage : "Use a DeepSeek API token with the Anthropic-compatible endpoint.";
         let t2;
         if ($[0] !== t1) {
           t2 = <Text bold={true}>{t1}</Text>;
@@ -375,7 +380,7 @@ function OAuthStatusMessage(t0) {
         }
         let t3;
         if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
-          t3 = <Text>Select login method:</Text>;
+          t3 = <Text>Select DeepSeek login method:</Text>;
           $[2] = t3;
         } else {
           t3 = $[2];
@@ -383,8 +388,8 @@ function OAuthStatusMessage(t0) {
         let t4;
         if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
           t4 = {
-            label: <Text>Claude account with subscription ·{" "}<Text dimColor={true}>Pro, Max, Team, or Enterprise</Text>{false && <Text>{"\n"}<Text color="warning">[ANT-ONLY]</Text>{" "}<Text dimColor={true}>Please use this option unless you need to login to a special org for accessing sensitive data (e.g. customer data, HIPI data) with the Console option</Text></Text>}{"\n"}</Text>,
-            value: "claudeai"
+            label: <Text>DeepSeek API token · <Text dimColor={true}>api.deepseek.com/anthropic</Text>{"\n"}</Text>,
+            value: "deepseek"
           };
           $[3] = t4;
         } else {
@@ -393,7 +398,7 @@ function OAuthStatusMessage(t0) {
         let t5;
         if ($[4] === Symbol.for("react.memo_cache_sentinel")) {
           t5 = {
-            label: <Text>Anthropic Console account ·{" "}<Text dimColor={true}>API usage billing</Text>{"\n"}</Text>,
+            label: <Text>Use /login to update DeepSeek URL or token{"\n"}</Text>,
             value: "console"
           };
           $[4] = t5;
@@ -402,10 +407,7 @@ function OAuthStatusMessage(t0) {
         }
         let t6;
         if ($[5] === Symbol.for("react.memo_cache_sentinel")) {
-          t6 = [t4, t5, {
-            label: <Text>3rd-party platform ·{" "}<Text dimColor={true}>Amazon Bedrock, Microsoft Foundry, or Vertex AI</Text>{"\n"}</Text>,
-            value: "platform"
-          }];
+          t6 = [t4];
           $[5] = t6;
         } else {
           t6 = $[5];
@@ -413,7 +415,12 @@ function OAuthStatusMessage(t0) {
         let t7;
         if ($[6] !== setLoginWithClaudeAi || $[7] !== setOAuthStatus) {
           t7 = <Box><Select options={t6} onChange={value_0 => {
-              if (value_0 === "platform") {
+              if (value_0 === "deepseek") {
+                logEvent("tengu_oauth_deepseek_selected", {});
+                setOAuthStatus({
+                  state: "deepseek_login"
+                });
+              } else if (value_0 === "platform") {
                 logEvent("tengu_oauth_platform_selected", {});
                 setOAuthStatus({
                   state: "platform_setup"
@@ -448,6 +455,8 @@ function OAuthStatusMessage(t0) {
         }
         return t8;
       }
+    case "deepseek_login":
+      return <DeepSeekLogin onDone={() => onDone()} />;
     case "platform_setup":
       {
         let t1;

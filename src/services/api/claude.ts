@@ -706,6 +706,19 @@ export type Options = {
   taskBudget?: { total: number; remaining?: number }
 }
 
+function isDeepSeekAnthropicBaseUrlConfigured(): boolean {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL?.trim()
+  if (!baseUrl) {
+    return false
+  }
+  try {
+    const parsed = new URL(baseUrl)
+    return parsed.host === 'api.deepseek.com' && parsed.pathname.includes('/anthropic')
+  } catch {
+    return false
+  }
+}
+
 export async function queryModelWithoutStreaming({
   messages,
   systemPrompt,
@@ -1263,7 +1276,10 @@ async function* queryModel(
   })
 
   queryCheckpoint('query_message_normalization_start')
-  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools)
+  const preserveTrailingThinking = isDeepSeekAnthropicBaseUrlConfigured()
+  let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools, {
+    preserveTrailingThinking,
+  })
   queryCheckpoint('query_message_normalization_end')
 
   // Model-specific post-processing: strip tool-search-specific fields if the

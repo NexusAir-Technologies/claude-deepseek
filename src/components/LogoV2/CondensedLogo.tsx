@@ -8,11 +8,9 @@ import { Box, Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { truncate } from '../../utils/format.js';
-import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
-import { AnimatedClawd } from './AnimatedClawd.js';
 import { Clawd } from './Clawd.js';
 import { GuestPassesUpsell, incrementGuestPassesSeenCount, useShowGuestPassesUpsell } from './GuestPassesUpsell.js';
 import { incrementOverageCreditUpsellSeenCount, OverageCreditUpsell, useShowOverageCreditUpsell } from './OverageCreditUpsell.js';
@@ -69,7 +67,7 @@ export function CondensedLogo() {
     t3 = $[6];
   }
   useEffect(t2, t3);
-  const textWidth = Math.max(columns - 15, 20);
+  const textWidth = Math.max(columns - 24, 20);
   const truncatedVersion = truncate(version, Math.max(textWidth - 13, 6));
   const effortSuffix = getEffortSuffix(model, effortValue);
   const {
@@ -81,14 +79,14 @@ export function CondensedLogo() {
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   let t4;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />;
+    t4 = <Clawd />;
     $[7] = t4;
   } else {
     t4 = $[7];
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>Claude Code</Text>;
+    t5 = <Text bold={true}>DeepSeek Claude</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];
@@ -140,7 +138,7 @@ export function CondensedLogo() {
   }
   let t12;
   if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9) {
-    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="center">{t4}<Box flexDirection="column">{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
+    t12 = <OffscreenFreeze><Box flexDirection="row" gap={2} alignItems="flex-start">{t4}<Box flexDirection="column" marginTop={1}>{t6}{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
     $[23] = t10;
     $[24] = t11;
     $[25] = t6;
