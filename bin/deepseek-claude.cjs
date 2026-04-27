@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { existsSync, mkdirSync, writeFileSync } = require('fs')
+const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('fs')
 const { homedir } = require('os')
 const { delimiter, dirname, join, resolve } = require('path')
 const { spawnSync } = require('child_process')
@@ -50,9 +50,33 @@ if (!existsSync(settingsPath)) {
   writeFileSync(settingsPath, `${JSON.stringify(defaultSettings, null, 2)}\n`, {
     mode: 0o600,
   })
+} else {
+  try {
+    const currentSettings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const mergedSettings = {
+      ...currentSettings,
+      env: {
+        ...defaultSettings.env,
+        ...(currentSettings.env || {}),
+        ANTHROPIC_BASE_URL: defaultSettings.env.ANTHROPIC_BASE_URL,
+      },
+      includeCoAuthoredBy:
+        currentSettings.includeCoAuthoredBy ?? defaultSettings.includeCoAuthoredBy,
+      model: currentSettings.model ?? defaultSettings.model,
+    }
+    writeFileSync(settingsPath, `${JSON.stringify(mergedSettings, null, 2)}\n`, {
+      mode: 0o600,
+    })
+  } catch {
+    // Keep user settings intact if they are temporarily invalid.
+  }
 }
 
 process.env.CLAUDE_CONFIG_DIR = configDir
+process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
+process.env.ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
+delete process.env.ANTHROPIC_AUTH_TOKEN
+delete process.env.CLAUDE_CODE_OAUTH_TOKEN
 process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
 process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
 process.env.CLAUDE_CODE_SUBAGENT_MODEL ||= 'deepseek-v4-pro'

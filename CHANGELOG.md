@@ -1,5 +1,12 @@
 # DeepSeek Claude Changelog
 
+## 0.1.3-beta.5
+
+- 强化 DeepSeek wrapper 环境隔离，固定官方 Anthropic-compatible API 地址。
+- 启动时清理继承的官方 Claude token，避免登录态与 DeepSeek API 混用。
+- 保留官方 skills 与 MCP 兼容读取，同时过滤 legacy MCP 中的 Claude 登录与路由环境变量。
+- 已存在的隔离 settings 会自动补齐并修正 DeepSeek 默认运行环境。
+
 ## 0.1.3-beta.4
 
 - 兼容读取官方 `~/.claude/skills` 用户级 skills，DeepSeek 隔离目录优先。

@@ -73,6 +73,33 @@ function shouldLoadLegacyUserMcpConfig(): boolean {
   return getClaudeConfigHomeDir() !== join(homedir(), '.claude')
 }
 
+const LEGACY_MCP_ENV_BLOCKLIST = new Set([
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'CLAUDE_CONFIG_DIR',
+])
+
+function filterLegacyMcpServerEnv(
+  servers: Record<string, McpServerConfig>,
+): Record<string, McpServerConfig> {
+  return Object.fromEntries(
+    Object.entries(servers).map(([name, server]) => {
+      if (!('env' in server) || !server.env) {
+        return [name, server]
+      }
+
+      const env = Object.fromEntries(
+        Object.entries(server.env).filter(
+          ([key]) => !LEGACY_MCP_ENV_BLOCKLIST.has(key.toUpperCase()),
+        ),
+      )
+
+      return [name, { ...server, env }]
+    }),
+  )
+}
+
 /**
  * Internal utility: Add scope to server configs
  */
@@ -978,7 +1005,9 @@ export function getMcpConfigsByScope(
             scope: 'user',
           })
         : { config: null, errors: [] }
-      const legacyServers = legacyConfig.config?.mcpServers ?? {}
+      const legacyServers = legacyConfig.config?.mcpServers
+        ? filterLegacyMcpServerEnv(legacyConfig.config.mcpServers)
+        : {}
 
       if (!mcpServers && Object.keys(legacyServers).length === 0) {
         return {
