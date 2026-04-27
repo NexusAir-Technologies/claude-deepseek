@@ -1,5 +1,11 @@
 # DeepSeek Claude Changelog
 
+## 0.1.3-beta.6
+
+- 新增 `code-deepseek` 命令，可开箱即用启动 VS Code 并注入 `claude` shim。
+- VS Code 官方 Claude Code 扩展调用 `claude` 时会转发到 `deepseek-claude`，无需客户手动创建本地脚本。
+- `code-deepseek` 仅影响其启动的 VS Code 会话，不修改用户全局 PATH。
+
 ## 0.1.3-beta.5
 
 - 强化 DeepSeek wrapper 环境隔离，固定官方 Anthropic-compatible API 地址。
