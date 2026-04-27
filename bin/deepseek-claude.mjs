@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { spawnSync, execSync } from 'node:child_process'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectDir = resolve(__dirname, '..')
@@ -54,9 +54,38 @@ if (!existsSync(settingsPath)) {
   }
 }
 
+function resolveConfiguredApiKey() {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY
+
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    if (typeof settings?.env?.ANTHROPIC_API_KEY === 'string' && settings.env.ANTHROPIC_API_KEY) {
+      return settings.env.ANTHROPIC_API_KEY
+    }
+    if (typeof settings?.apiKeyHelper === 'string' && settings.apiKeyHelper.trim()) {
+      const key = execSync(settings.apiKeyHelper, {
+        encoding: 'utf8',
+        env: process.env,
+        cwd: process.cwd(),
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5000,
+      }).trim()
+      if (key) return key
+    }
+  } catch {
+    return undefined
+  }
+
+  return undefined
+}
+
 process.env.CLAUDE_CONFIG_DIR = configDir
 process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
 process.env.ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
+const configuredApiKey = resolveConfiguredApiKey()
+if (configuredApiKey) {
+  process.env.ANTHROPIC_API_KEY = configuredApiKey
+}
 delete process.env.ANTHROPIC_AUTH_TOKEN
 delete process.env.CLAUDE_CODE_OAUTH_TOKEN
 process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'

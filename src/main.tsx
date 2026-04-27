@@ -21,7 +21,7 @@ startKeychainPrefetch();
 import { feature } from 'bun:bundle';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
-import { readFileSync } from 'fs';
+import { readFileSync, appendFileSync } from 'fs';
 import mapValues from 'lodash-es/mapValues.js';
 import pickBy from 'lodash-es/pickBy.js';
 import uniqBy from 'lodash-es/uniqBy.js';
@@ -79,7 +79,8 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 /* eslint-disable @typescript-eslint/no-require-imports */
 const assistantModule = feature('KAIROS') ? require('./assistant/index.js') as typeof import('./assistant/index.js') : null;
 const kairosGate = feature('KAIROS') ? require('./assistant/gate.js') as typeof import('./assistant/gate.js') : null;
-import { relative, resolve } from 'path';
+import { relative, resolve, join } from 'path';
+import { homedir } from 'os';
 import { isAnalyticsDisabled } from 'src/services/analytics/config.js';
 import { getFeatureValue_CACHED_MAY_BE_STALE } from 'src/services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
@@ -207,6 +208,17 @@ import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from '.
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 profileCheckpoint('main_tsx_imports_loaded');
+
+function logVsCodeMainDebug(message: string, data?: Record<string, unknown>): void {
+  if (process.env.DEEPSEEK_CLAUDE_VSCODE !== '1') return;
+
+  try {
+    const payload = data ? ` ${JSON.stringify(data)}` : '';
+    appendFileSync(join(homedir(), '.deepseek-claude', 'vscode-shim.log'), `${new Date().toISOString()} main_${message}${payload}\n`);
+  } catch {
+    // Ignore diagnostic logging failures.
+  }
+}
 
 /**
  * Log managed settings keys to Statsig for analytics.
@@ -599,7 +611,16 @@ export async function main() {
   // Initialize warning handler early to catch warnings
   initializeWarningHandler();
   process.on('exit', () => {
+    logVsCodeMainDebug('process_exit', {
+      exitCode: process.exitCode,
+    });
     resetCursor();
+  });
+  process.on('beforeExit', code => {
+    logVsCodeMainDebug('process_before_exit', {
+      code,
+      exitCode: process.exitCode,
+    });
   });
   process.on('SIGINT', () => {
     // In print mode, print.ts registers its own SIGINT handler that aborts
@@ -865,6 +886,7 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
   // Input hijacking breaks MCP.
   !process.argv.includes('mcp')) {
     if (inputFormat === 'stream-json') {
+      process.stdin.setEncoding('utf8');
       return process.stdin;
     }
     process.stdin.setEncoding('utf8');
@@ -1132,6 +1154,10 @@ async function run(): Promise<CommanderCommand> {
     let inputFormat = options.inputFormat;
     let verbose = options.verbose ?? getGlobalConfig().verbose;
     let print = options.print;
+    const isVsCodeStreamJson = process.env.DEEPSEEK_CLAUDE_VSCODE === '1' && outputFormat === 'stream-json' && inputFormat === 'stream-json';
+    if (isVsCodeStreamJson && !print) {
+      print = true;
+    }
     const init = options.init ?? false;
     const initOnly = options.initOnly ?? false;
     const maintenance = options.maintenance ?? false;
@@ -1337,7 +1363,18 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Get isNonInteractiveSession from state (was set before init())
-    const isNonInteractiveSession = getIsNonInteractiveSession();
+    const isNonInteractiveSession = getIsNonInteractiveSession() || print === true;
+    logVsCodeMainDebug('action_state', {
+      optionsPrint: options.print,
+      print,
+      isNonInteractiveSession,
+      stateNonInteractive: getIsNonInteractiveSession(),
+      outputFormat,
+      inputFormat,
+      verbose,
+      isVsCodeStreamJson,
+      argv: process.argv.slice(2),
+    });
 
     // Validate that fallback model is different from main model
     if (fallbackModel && options.model && fallbackModel === options.model) {
@@ -2589,6 +2626,11 @@ async function run(): Promise<CommanderCommand> {
 
     // --print mode
     if (isNonInteractiveSession) {
+      logVsCodeMainDebug('headless_branch_enter', {
+        outputFormat,
+        inputFormat,
+        print,
+      });
       if (outputFormat === 'stream-json' || outputFormat === 'json') {
         setHasFormattedOutput(true);
       }
@@ -2827,42 +2869,69 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       logSessionTelemetry();
+      logVsCodeMainDebug('before_print_import');
       profileCheckpoint('before_print_import');
-      const {
-        runHeadless
-      } = await import('src/cli/print.js');
-      profileCheckpoint('after_print_import');
-      void runHeadless(inputPrompt, () => headlessStore.getState(), headlessStore.setState, commandsHeadless, tools, sdkMcpConfigs, agentDefinitions.activeAgents, {
-        continue: options.continue,
-        resume: options.resume,
-        verbose: verbose,
-        outputFormat: outputFormat,
-        jsonSchema,
-        permissionPromptToolName: options.permissionPromptTool,
-        allowedTools,
-        thinkingConfig,
-        maxTurns: options.maxTurns,
-        maxBudgetUsd: options.maxBudgetUsd,
-        taskBudget: options.taskBudget ? {
-          total: options.taskBudget
-        } : undefined,
-        systemPrompt,
-        appendSystemPrompt,
-        userSpecifiedModel: effectiveModel,
-        fallbackModel: userSpecifiedFallbackModel,
-        teleport,
-        sdkUrl,
-        replayUserMessages: effectiveReplayUserMessages,
-        includePartialMessages: effectiveIncludePartialMessages,
-        forkSession: options.forkSession || false,
-        resumeSessionAt: options.resumeSessionAt || undefined,
-        rewindFiles: options.rewindFiles,
-        enableAuthStatus: options.enableAuthStatus,
-        agent: agentCli,
-        workload: options.workload,
-        setupTrigger: setupTrigger ?? undefined,
-        sessionStartHooksPromise
-      });
+      const vscodeHeadlessKeepAlive = isVsCodeStreamJson ? setInterval(() => {}, 1000) : undefined;
+      if (vscodeHeadlessKeepAlive) {
+        logVsCodeMainDebug('headless_keep_alive_start');
+      }
+      let runHeadless: typeof import('src/cli/print.js').runHeadless;
+      try {
+        try {
+          ({ runHeadless } = await import('src/cli/print.js'));
+        } catch (error) {
+          logVsCodeMainDebug('print_import_error', {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+          throw error;
+        }
+        logVsCodeMainDebug('after_print_import');
+        profileCheckpoint('after_print_import');
+        logVsCodeMainDebug('before_run_headless_call', {
+          commandsHeadless: commandsHeadless.length,
+          tools: tools.length,
+          mcpClients: headlessStore.getState().mcp.clients.length,
+          mcpTools: headlessStore.getState().mcp.tools.length,
+        });
+        await runHeadless(inputPrompt, () => headlessStore.getState(), headlessStore.setState, commandsHeadless, tools, sdkMcpConfigs, agentDefinitions.activeAgents, {
+          continue: options.continue,
+          resume: options.resume,
+          verbose: verbose,
+          outputFormat: outputFormat,
+          jsonSchema,
+          permissionPromptToolName: options.permissionPromptTool,
+          allowedTools,
+          thinkingConfig,
+          maxTurns: options.maxTurns,
+          maxBudgetUsd: options.maxBudgetUsd,
+          taskBudget: options.taskBudget ? {
+            total: options.taskBudget
+          } : undefined,
+          systemPrompt,
+          appendSystemPrompt,
+          userSpecifiedModel: effectiveModel,
+          fallbackModel: userSpecifiedFallbackModel,
+          teleport,
+          sdkUrl,
+          replayUserMessages: effectiveReplayUserMessages,
+          includePartialMessages: effectiveIncludePartialMessages,
+          forkSession: options.forkSession || false,
+          resumeSessionAt: options.resumeSessionAt || undefined,
+          rewindFiles: options.rewindFiles,
+          enableAuthStatus: options.enableAuthStatus,
+          agent: agentCli,
+          workload: options.workload,
+          setupTrigger: setupTrigger ?? undefined,
+          sessionStartHooksPromise
+        });
+      } finally {
+        if (vscodeHeadlessKeepAlive) {
+          clearInterval(vscodeHeadlessKeepAlive);
+          logVsCodeMainDebug('headless_keep_alive_stop');
+        }
+      }
+      logVsCodeMainDebug('after_run_headless_call');
       return;
     }
 

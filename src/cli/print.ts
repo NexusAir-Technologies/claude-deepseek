@@ -1,7 +1,9 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
+import { appendFileSync } from 'fs'
 import { readFile, stat } from 'fs/promises'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
+import { homedir } from 'os'
 import {
   downloadUserSettings,
   redownloadUserSettings,
@@ -354,6 +356,20 @@ import { sleep } from '../utils/sleep.js'
 import { isExtractModeActive } from '../memdir/paths.js'
 
 // Dead code elimination: conditional imports
+function logVsCodeSdkDebug(message: string, data?: Record<string, unknown>) {
+  if (process.env.DEEPSEEK_CLAUDE_VSCODE !== '1') return
+
+  try {
+    const payload = data ? ` ${JSON.stringify(data)}` : ''
+    appendFileSync(
+      join(homedir(), '.deepseek-claude', 'vscode-shim.log'),
+      `${new Date().toISOString()} sdk_${message}${payload}\n`,
+    )
+  } catch {
+    // Ignore diagnostic logging failures.
+  }
+}
+
 /* eslint-disable @typescript-eslint/no-require-imports */
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
@@ -491,6 +507,18 @@ export async function runHeadless(
     setSDKStatus?: (status: SDKStatus) => void
   },
 ): Promise<void> {
+  logVsCodeSdkDebug('run_headless_entry', {
+    inputPromptType:
+      typeof inputPrompt === 'string'
+        ? 'string'
+        : inputPrompt && typeof inputPrompt === 'object'
+          ? 'async_iterable'
+          : typeof inputPrompt,
+    outputFormat: options.outputFormat,
+    verbose: options.verbose,
+    replayUserMessages: options.replayUserMessages,
+  })
+
   if (
     process.env.USER_TYPE === 'ant' &&
     isEnvTruthy(process.env.CLAUDE_CODE_EXIT_AFTER_FIRST_RENDER)
@@ -585,6 +613,16 @@ export async function runHeadless(
   }
 
   const structuredIO = getStructuredIO(inputPrompt, options)
+
+  logVsCodeSdkDebug('structured_io_created', {
+    outputFormat: options.outputFormat,
+    inputPromptType:
+      typeof inputPrompt === 'string'
+        ? 'string'
+        : inputPrompt && typeof inputPrompt === 'object'
+          ? 'async_iterable'
+          : typeof inputPrompt,
+  })
 
   // When emitting NDJSON for SDK clients, any stray write to stdout (debug
   // prints, dependency console.log, library banners) breaks the client's
@@ -860,7 +898,12 @@ export async function runHeadless(
       ? createStreamlinedTransformer()
       : null
 
-  headlessProfilerCheckpoint('before_runHeadlessStreaming')
+  logVsCodeSdkDebug('before_run_headless_streaming', {
+    initialMessages: initialMessages.length,
+    filteredTools: filteredTools.length,
+    commands: commands.length,
+    mcpCommands: appState.mcp.commands.length,
+  })
   for await (const message of runHeadlessStreaming(
     structuredIO,
     appState.mcp.clients,
@@ -875,6 +918,10 @@ export async function runHeadless(
     options,
     turnInterruptionState,
   )) {
+    logVsCodeSdkDebug('run_headless_yield', {
+      type: message.type,
+      subtype: 'subtype' in message ? message.subtype : undefined,
+    })
     if (transformToStreamlined) {
       // Streamlined mode: transform messages and stream immediately
       const transformed = transformToStreamlined(message)
@@ -912,6 +959,14 @@ export async function runHeadless(
       }
       lastMessage = message
     }
+  }
+
+  try {
+    if (options.outputFormat === 'stream-json') {
+      logVsCodeSdkDebug('run_headless_completed', { lastMessageType: lastMessage?.type })
+    }
+  } catch {
+    // Ignore diagnostic logging failures.
   }
 
   switch (options.outputFormat) {
@@ -1926,6 +1981,10 @@ function runHeadlessStreaming(
     try {
       let command: QueuedCommand | undefined
       let waitingForAgents = false
+      logVsCodeSdkDebug('run_started', {
+        queueHasCommand: peek(isMainThread) !== undefined,
+        inputClosed,
+      })
 
       // Extract command processing into a named function for the do-while pattern.
       // Drains the queue, batching consecutive prompt-mode commands into one
@@ -1933,6 +1992,11 @@ function runHeadlessStreaming(
       // into a single follow-up turn instead of N separate turns.
       const drainCommandQueue = async () => {
         while ((command = dequeue(isMainThread))) {
+          logVsCodeSdkDebug('command_dequeued', {
+            mode: command.mode,
+            uuid: command.uuid,
+            priority: command.priority,
+          })
           if (
             command.mode !== 'prompt' &&
             command.mode !== 'orphaned-permission' &&
@@ -2143,6 +2207,17 @@ function runHeadlessStreaming(
           // const-capture: TS loses `while ((command = dequeue()))` narrowing
           // inside the closure.
           const cmd = command
+          logVsCodeSdkDebug('before_ask', {
+            uuid: cmd.uuid,
+            inputType: Array.isArray(input) ? 'array' : typeof input,
+            inputLength: Array.isArray(input)
+              ? input.length
+              : typeof input === 'string'
+                ? input.length
+                : undefined,
+            tools: allTools.length,
+            commands: currentCommands.length,
+          })
           await runWithWorkload(cmd.workload ?? options.workload, async () => {
             for await (const message of ask({
               commands: uniqBy(
@@ -2208,6 +2283,11 @@ function runHeadlessStreaming(
                 })
               },
             })) {
+              logVsCodeSdkDebug('ask_yield', {
+                type: message.type,
+                subtype: 'subtype' in message ? message.subtype : undefined,
+                isError: 'is_error' in message ? message.is_error : undefined,
+              })
               // Forward messages to bridge incrementally (mid-turn) so
               // claude.ai sees progress and the connection stays alive
               // while blocked on permission requests.
@@ -2244,6 +2324,7 @@ function runHeadlessStreaming(
               }
             }
           }) // end runWithWorkload
+          logVsCodeSdkDebug('after_ask', { uuid: cmd.uuid })
 
           for (const uuid of batchUuids) {
             notifyCommandLifecycle(uuid, 'completed')
@@ -2452,6 +2533,7 @@ function runHeadlessStreaming(
       return
     } finally {
       runPhase = 'finally_flush'
+      logVsCodeSdkDebug('run_finally', { runPhase })
       // Flush pending internal events before going idle
       await structuredIO.flushInternalEvents()
       runPhase = 'finally_post_flush'
@@ -2675,6 +2757,7 @@ function runHeadlessStreaming(
         unsubscribeSkillChanges()
         unsubscribeAuthStatus?.()
         statusListeners.delete(rateLimitListener)
+        logVsCodeSdkDebug('output_done', { reason: 'input_closed_after_run' })
         output.done()
       }
     }
@@ -4099,6 +4182,17 @@ function runHeadlessStreaming(
         trackReceivedMessageUuid(message.uuid)
       }
 
+      logVsCodeSdkDebug('user_message_received', {
+        uuid: message.uuid,
+        contentType: Array.isArray(message.message.content)
+          ? 'array'
+          : typeof message.message.content,
+        contentLength: Array.isArray(message.message.content)
+          ? message.message.content.length
+          : typeof message.message.content === 'string'
+            ? message.message.content.length
+            : undefined,
+      })
       enqueue({
         mode: 'prompt' as const,
         // file_attachments rides the protobuf catchall from the web composer.
@@ -4107,6 +4201,7 @@ function runHeadlessStreaming(
         uuid: message.uuid,
         priority: message.priority,
       })
+      logVsCodeSdkDebug('user_message_enqueued', { uuid: message.uuid })
       // Increment prompt count for attribution tracking and save snapshot
       // The snapshot persists promptCount so it survives compaction
       if (feature('COMMIT_ATTRIBUTION')) {
@@ -4119,10 +4214,11 @@ function runHeadlessStreaming(
           }),
         }))
       }
-      void run()
+      await run()
     }
     inputClosed = true
     cronScheduler?.stop()
+    logVsCodeSdkDebug('input_closed', { running })
     if (!running) {
       // If a push-suggestion is in-flight, wait for it to emit before closing
       // the output stream (5 s safety timeout to prevent hanging).
@@ -4135,6 +4231,7 @@ function runHeadlessStreaming(
       unsubscribeSkillChanges()
       unsubscribeAuthStatus?.()
       statusListeners.delete(rateLimitListener)
+      logVsCodeSdkDebug('output_done', { reason: 'input_closed_after_reader' })
       output.done()
     }
   })()

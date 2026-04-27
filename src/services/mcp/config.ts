@@ -70,7 +70,10 @@ function getLegacyUserMcpConfigFilePath(): string {
 }
 
 function shouldLoadLegacyUserMcpConfig(): boolean {
-  return getClaudeConfigHomeDir() !== join(homedir(), '.claude')
+  return (
+    process.env.DEEPSEEK_CLAUDE_VSCODE !== '1' &&
+    getClaudeConfigHomeDir() !== join(homedir(), '.claude')
+  )
 }
 
 const LEGACY_MCP_ENV_BLOCKLIST = new Set([
