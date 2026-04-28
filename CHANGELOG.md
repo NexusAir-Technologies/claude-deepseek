@@ -1,5 +1,20 @@
 # DeepSeek Claude Changelog
 
+## 0.2.0
+
+- 发布新的正式版本，整合 `0.1.4-beta.*` 的 VSCode DeepSeek wrapper、`deepseek-code` 接入命令与中断处理改进。
+- VSCode 集成新增 `deepseek-claude vscode doctor/install/restore` 工作流：支持诊断配置、安装 DeepSeek wrapper、保留官方 native binary 备份并恢复官方入口。
+- 按 DeepSeek 官方 Claude Code 集成方式注入 `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL=deepseek-v4-pro[1m]`、`ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash` 与 effort/capabilities 相关环境变量。
+- 对外模型列表精简为 `deepseek-v4-pro[1m]` 与 `deepseek-v4-flash`，旧模型名保留内部兼容归一，降低客户机配置漂移风险。
+- 新增 `docs/deepseek-claude-usage.md`，覆盖新电脑安装、登录、VSCode 接入、Remote WSL 注意事项、故障排查与恢复官方入口。
+
+## 0.1.4-beta.0
+
+- 新增 `deepseek-code` VS Code 接入命令，通过写入 `claudeCode.claudeProcessWrapper`、`claudeCode.environmentVariables` 与 `claudeCode.disableLoginPrompt` 启动 DeepSeek wrapper，避免默认 patch VS Code 插件 native binary。
+- 增强 VS Code wrapper 中断处理：识别 `interrupt` / `end_session` control request，并向 Bun 子进程转发 `SIGINT` / `SIGTERM`，降低取消对话后仍卡住的问题。
+- VS Code wrapper 补齐 `/model` 与 `/effort` 所需控制响应：插件内可选择 `DeepSeek V4 Flash` / `DeepSeek V4 Pro`，默认 Flash 映射到 `deepseek-chat`，Pro 映射到 `deepseek-reasoner` 并支持 low / medium / high effort。
+- `code-deepseek` 改为兼容封装并提示迁移到 `deepseek-code`；`deepseek-vscode use` 保留为 legacy patch fallback。
+
 ## 0.1.3
 
 - 发布首个正式版本，基于 `0.1.3-beta.29` 的 VS Code 官方 Claude Code 扩展兼容链路：支持 `deepseek-vscode use` 接入 `deepseek-claude`，完成 stream-json 初始化、用户消息转发、隔离配置读取、DeepSeek API key 注入与基础诊断。

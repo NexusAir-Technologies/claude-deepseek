@@ -106,19 +106,19 @@ function getSonnet46Option(): ModelOption {
 
 function getDeepSeekV4ProOption(): ModelOption {
   return {
-    value: 'deepseek-v4-pro',
+    value: 'deepseek-reasoner',
     label: 'DeepSeek V4 Pro',
-    description: 'DeepSeek V4 Pro · Official Anthropic-compatible model',
-    descriptionForModel: 'DeepSeek V4 Pro - default model for DeepSeek Claude',
+    description: 'DeepSeek V4 Pro · stronger reasoning for complex tasks',
+    descriptionForModel: 'DeepSeek V4 Pro - stronger reasoning for complex tasks',
   }
 }
 
 function getDeepSeekV4FlashOption(): ModelOption {
   return {
-    value: 'deepseek-v4-flash',
+    value: 'deepseek-chat',
     label: 'DeepSeek V4 Flash',
-    description: 'DeepSeek V4 Flash · Fast fallback model',
-    descriptionForModel: 'DeepSeek V4 Flash - fast fallback model for DeepSeek Claude',
+    description: 'DeepSeek V4 Flash · faster default for everyday coding tasks',
+    descriptionForModel: 'DeepSeek V4 Flash - faster default for everyday coding tasks',
   }
 }
 
@@ -288,9 +288,8 @@ function getOpusPlanOption(): ModelOption {
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(_fastMode = false): ModelOption[] {
   return [
-    getDefaultOptionForUser(),
-    getDeepSeekV4ProOption(),
     getDeepSeekV4FlashOption(),
+    getDeepSeekV4ProOption(),
   ]
 }
 

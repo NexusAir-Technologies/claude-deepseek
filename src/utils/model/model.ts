@@ -117,7 +117,7 @@ export function getDefaultOpusModel(): ModelName {
 
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
 export function getDefaultSonnetModel(): ModelName {
-  return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'deepseek-v4-pro'
+  return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'deepseek-chat'
 }
 
 // @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
@@ -341,6 +341,10 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
   switch (model) {
+    case 'deepseek-reasoner':
+      return 'DeepSeek V4 Pro'
+    case 'deepseek-chat':
+      return 'DeepSeek V4 Flash'
     case 'deepseek-v4-pro':
       return 'DeepSeek V4 Pro'
     case 'deepseek-v4-flash':
@@ -455,9 +459,9 @@ export function parseUserSpecifiedModel(
       case 'opusplan':
         return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '') // Sonnet is default, Opus in plan mode
       case 'deepseek':
-        return 'deepseek-v4-pro'
+        return 'deepseek-reasoner'
       case 'flash':
-        return 'deepseek-v4-flash'
+        return 'deepseek-chat'
       case 'sonnet':
         return getDefaultSonnetModel() + (has1mTag ? '[1m]' : '')
       case 'haiku':
