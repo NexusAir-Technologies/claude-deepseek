@@ -39,6 +39,7 @@ const DEEPSEEK_MODEL_ALIASES = {
 const DEEPSEEK_EFFORT_INPUT_LEVELS = ['auto', 'low', 'medium', 'high', 'max']
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
 const DEEPSEEK_DEFAULT_EFFORT = 'low'
+const DEEPSEEK_VSCODE_MCP_TIMEOUT = process.env.DEEPSEEK_VSCODE_MCP_TIMEOUT || '5000'
 const DEEPSEEK_MODELS = [
   {
     value: 'deepseek-v4-pro',
@@ -689,24 +690,35 @@ if (handleCliCommand(cliArgs)) {
 mkdirSync(configDir, { recursive: true })
 ensureCliCompatibilityAssets()
 
+function buildMergedSettings(currentSettings) {
+  const env = {
+    ...defaultSettings.env,
+    ...(currentSettings.env || {}),
+    ANTHROPIC_BASE_URL: defaultSettings.env.ANTHROPIC_BASE_URL,
+  }
+
+  if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
+    env.MCP_TIMEOUT = DEEPSEEK_VSCODE_MCP_TIMEOUT
+  }
+
+  return {
+    ...currentSettings,
+    env,
+    includeCoAuthoredBy:
+      currentSettings.includeCoAuthoredBy ?? defaultSettings.includeCoAuthoredBy,
+    model: currentSettings.model ?? defaultSettings.model,
+  }
+}
+
 if (!existsSync(settingsPath)) {
-  writeFileSync(settingsPath, `${JSON.stringify(defaultSettings, null, 2)}\n`, {
+  const initialSettings = buildMergedSettings(defaultSettings)
+  writeFileSync(settingsPath, `${JSON.stringify(initialSettings, null, 2)}\n`, {
     mode: 0o600,
   })
 } else {
   try {
     const currentSettings = JSON.parse(readFileSync(settingsPath, 'utf8'))
-    const mergedSettings = {
-      ...currentSettings,
-      env: {
-        ...defaultSettings.env,
-        ...(currentSettings.env || {}),
-        ANTHROPIC_BASE_URL: defaultSettings.env.ANTHROPIC_BASE_URL,
-      },
-      includeCoAuthoredBy:
-        currentSettings.includeCoAuthoredBy ?? defaultSettings.includeCoAuthoredBy,
-      model: currentSettings.model ?? defaultSettings.model,
-    }
+    const mergedSettings = buildMergedSettings(currentSettings)
     writeFileSync(settingsPath, `${JSON.stringify(mergedSettings, null, 2)}\n`, {
       mode: 0o600,
     })
@@ -787,7 +799,7 @@ process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
 process.env.CLAUDE_CODE_SUBAGENT_MODEL ||= toApiModel(readCurrentModel())
 process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH ||= '1'
 if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
-  process.env.MCP_TIMEOUT = process.env.DEEPSEEK_VSCODE_MCP_TIMEOUT || '5000'
+  process.env.MCP_TIMEOUT = DEEPSEEK_VSCODE_MCP_TIMEOUT
 }
 process.env.PATH = [
   join(projectDir, 'node_modules', '.bin'),
