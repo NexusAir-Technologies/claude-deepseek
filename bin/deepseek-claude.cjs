@@ -33,8 +33,8 @@ const DEEPSEEK_MODEL_ALIASES = {
   'deepseek-v4-pro': 'deepseek-v4-pro',
   'deepseek-v4-pro[1m]': 'deepseek-v4-pro',
   'deepseek-reasoner': 'deepseek-v4-pro',
-  'deepseek-v4-flash': 'deepseek-chat',
-  'deepseek-chat': 'deepseek-chat',
+  'deepseek-v4-flash': 'deepseek-v4-flash',
+  'deepseek-chat': 'deepseek-v4-flash',
 }
 const DEEPSEEK_EFFORT_INPUT_LEVELS = ['auto', 'low', 'medium', 'high', 'max']
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
@@ -49,9 +49,9 @@ const DEEPSEEK_MODELS = [
     supportsMaxEffort: true,
   },
   {
-    value: 'deepseek-chat',
-    displayName: 'DeepSeek Chat',
-    description: 'DeepSeek chat model',
+    value: 'deepseek-v4-flash',
+    displayName: 'DeepSeek V4 Flash',
+    description: 'DeepSeek V4 Flash model',
   },
 ]
 const forwardedVsCodeEnvelopeIds = new Set()
@@ -287,7 +287,9 @@ function toApiModel(model) {
 }
 
 function fromApiModel(model) {
-  return Object.entries(DEEPSEEK_MODEL_ALIASES).find(([, apiModel]) => apiModel === model)?.[0] || model
+  if (model === 'deepseek-v4-pro') return 'deepseek-v4-pro'
+  if (model === 'deepseek-v4-flash' || model === 'deepseek-chat') return 'deepseek-v4-flash'
+  return model
 }
 
 function modelSupportsEffort(model) {
