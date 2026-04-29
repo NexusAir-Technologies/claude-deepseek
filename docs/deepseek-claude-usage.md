@@ -104,6 +104,10 @@ deepseek-claude vscode doctor
 - 是否找到扩展里的 native binary
 - native binary 当前是官方入口还是 DeepSeek wrapper
 - 是否存在官方入口备份
+- VSCode settings 路径是否存在
+- 是否已关闭官方登录提示
+- DeepSeek 托管的 VSCode 环境变量数量
+- VSCode 默认 effort 档位
 
 典型输出：
 
@@ -116,6 +120,10 @@ VS Code extension: /home/xxx/.vscode-server/extensions/anthropic.claude-code-...
 Native binary: /home/xxx/.vscode-server/extensions/anthropic.claude-code-.../resources/native-binary/claude
 Native state: deepseek wrapper
 Official backup: /home/xxx/.vscode-server/extensions/anthropic.claude-code-.../resources/native-binary/claude.official-backup
+VS Code settings: /home/xxx/.vscode-server/data/Machine/settings.json
+Disable login prompt: true
+Managed env count: 15
+VS Code effort: low
 ```
 
 ### install
@@ -132,6 +140,11 @@ deepseek-claude vscode install
 2. 找到扩展里的 native 启动入口：`resources/native-binary/claude`。
 3. 如果还没有备份，先备份为 `claude.official-backup`。
 4. 把 native 启动入口替换为 DeepSeek wrapper。
+5. 写入 VSCode `claudeCode.environmentVariables`，让扩展启动进程时稳定带上 DeepSeek endpoint、API key、Pro/Flash 模型和 capabilities。
+6. 设置 `claudeCode.disableLoginPrompt=true`，避免第三方 provider 场景反复弹官方登录。
+7. 将 VSCode 默认 effort 设置为 `low`。
+
+`low` 是 VSCode 默认值，不是能力上限。你仍可以在 UI 或命令中切换到 `medium`、`high`、`xhigh`、`max`。日常建议先用 `low` 或 `medium`，因为 `deepseek-v4-pro[1m]` + `max` thinking 在 VSCode 面板中可能慢到被 UI 中断。
 
 执行完成后，需要在 VSCode 执行：
 
@@ -149,7 +162,7 @@ Developer: Reload Window
 deepseek-claude vscode restore
 ```
 
-它会用 `claude.official-backup` 还原 `resources/native-binary/claude`。
+它会用 `claude.official-backup` 还原 `resources/native-binary/claude`，并清理 `vscode install` 写入的 DeepSeek 托管环境变量。用户自己添加的其它 VSCode 环境变量会保留。
 
 执行完成后，同样需要在 VSCode 执行：
 
@@ -298,5 +311,6 @@ deepseek-claude vscode restore
 
 - 不要在聊天、截图、工单或日志中暴露 DeepSeek API Key。
 - `vscode doctor` 只显示 `present` / `missing`，不会输出真实 API Key。
-- `vscode install` 会修改 VSCode 扩展的 native 启动入口，但会先保留官方备份。
-- `vscode restore` 可恢复官方 Claude Code 启动入口。
+- `vscode install` 会修改 VSCode 扩展的 native 启动入口，但会先保留官方备份，并写入 DeepSeek 托管的 VSCode 环境变量。
+- `vscode install` 默认把 VSCode effort 设为 `low`，这是为了避免 Pro 模型 `max` thinking 在 VSCode 面板中超时或被中断。
+- `vscode restore` 可恢复官方 Claude Code 启动入口，并清理 DeepSeek 托管的 VSCode 环境变量。
