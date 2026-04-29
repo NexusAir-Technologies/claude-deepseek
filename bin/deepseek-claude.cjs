@@ -37,6 +37,7 @@ const DEEPSEEK_MODEL_ALIASES = {
   'deepseek-chat': 'deepseek-v4-flash',
 }
 const DEEPSEEK_EFFORT_INPUT_LEVELS = ['auto', 'low', 'medium', 'high', 'max']
+const DEEPSEEK_SUPPORTED_EFFORT_LEVELS = ['low', 'medium', 'high', 'max']
 const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
 const DEEPSEEK_DEFAULT_EFFORT = 'low'
 const DEEPSEEK_VSCODE_MCP_TIMEOUT = process.env.DEEPSEEK_VSCODE_MCP_TIMEOUT || '5000'
@@ -46,7 +47,7 @@ const DEEPSEEK_MODELS = [
     displayName: 'DeepSeek V4 Pro',
     description: 'DeepSeek V4 Pro reasoning model',
     supportsEffort: true,
-    supportsMaxEffort: true,
+    supportedEffortLevels: DEEPSEEK_SUPPORTED_EFFORT_LEVELS,
   },
   {
     value: 'deepseek-v4-flash',
@@ -67,9 +68,16 @@ const defaultSettings = {
     MCP_TIMEOUT: '60000',
     API_TIMEOUT_MS: '3000000',
     ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
+    CLAUDE_CODE_SUBAGENT_MODEL: 'deepseek-v4-flash',
+    ANTHROPIC_DEFAULT_OPUS_MODEL: 'deepseek-v4-pro',
+    ANTHROPIC_DEFAULT_SONNET_MODEL: 'deepseek-v4-pro',
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: 'deepseek-v4-flash',
   },
   includeCoAuthoredBy: false,
   model: DEEPSEEK_DEFAULT_MODEL,
+  deepseek: {
+    effort: 'max',
+  },
 }
 
 function getPackageVersion() {
@@ -524,10 +532,7 @@ function getForwardArgs() {
     args.includes('stream-json') &&
     args.includes('--input-format')
   ) {
-    let vscodeArgs = removeArgWithValue(args, '--resume')
-    if (vscodeArgs.length !== args.length) {
-      logVsCodeShim('resume_arg_stripped', { originalArgs: args.length, forwardArgs: vscodeArgs.length })
-    }
+    let vscodeArgs = [...args]
     if (!vscodeArgs.includes('--print') && !vscodeArgs.includes('-p')) {
       vscodeArgs.unshift('--print')
     }
@@ -741,6 +746,10 @@ function buildMergedSettings(currentSettings) {
     includeCoAuthoredBy:
       currentSettings.includeCoAuthoredBy ?? defaultSettings.includeCoAuthoredBy,
     model: currentSettings.model ?? defaultSettings.model,
+    deepseek: {
+      ...(defaultSettings.deepseek || {}),
+      ...(currentSettings.deepseek || {}),
+    },
   }
 }
 

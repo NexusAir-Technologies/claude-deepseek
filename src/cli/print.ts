@@ -257,6 +257,7 @@ import {
 } from 'src/services/api/grove.js'
 import {
   toInternalMessages,
+  toSDKMessages,
   toSDKRateLimitInfo,
 } from 'src/utils/messages/mappers.js'
 import { createModelSwitchBreadcrumbs } from 'src/utils/messages.js'
@@ -897,6 +898,19 @@ export async function runHeadless(
     options.outputFormat === 'stream-json'
       ? createStreamlinedTransformer()
       : null
+
+  if (
+    options.resume &&
+    options.outputFormat === 'stream-json' &&
+    options.verbose &&
+    initialMessages.length > 0
+  ) {
+    for (const message of toSDKMessages(initialMessages)) {
+      await structuredIO.write(
+        message.type === 'user' ? { ...message, isReplay: true } : message,
+      )
+    }
+  }
 
   logVsCodeSdkDebug('before_run_headless_streaming', {
     initialMessages: initialMessages.length,
