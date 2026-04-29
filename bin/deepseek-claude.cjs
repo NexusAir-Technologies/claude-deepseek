@@ -28,6 +28,32 @@ const DEEPSEEK_MCP_ENV_BLOCKLIST = new Set([
   'CLAUDE_CONFIG_DIR',
 ])
 
+const DEEPSEEK_MODEL_ALIASES = {
+  default: 'deepseek-v4-pro',
+  'deepseek-v4-pro': 'deepseek-v4-pro',
+  'deepseek-v4-pro[1m]': 'deepseek-v4-pro',
+  'deepseek-reasoner': 'deepseek-v4-pro',
+  'deepseek-v4-flash': 'deepseek-chat',
+  'deepseek-chat': 'deepseek-chat',
+}
+const DEEPSEEK_EFFORT_INPUT_LEVELS = ['auto', 'low', 'medium', 'high', 'max']
+const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro'
+const DEEPSEEK_DEFAULT_EFFORT = 'low'
+const DEEPSEEK_MODELS = [
+  {
+    value: 'deepseek-v4-pro',
+    displayName: 'DeepSeek V4 Pro',
+    description: 'DeepSeek V4 Pro reasoning model',
+    supportsEffort: true,
+    supportsMaxEffort: true,
+  },
+  {
+    value: 'deepseek-chat',
+    displayName: 'DeepSeek Chat',
+    description: 'DeepSeek chat model',
+  },
+]
+
 const defaultSettings = {
   $schema: 'https://json.schemastore.org/claude-code-settings.json',
   env: {
@@ -41,7 +67,7 @@ const defaultSettings = {
     ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
   },
   includeCoAuthoredBy: false,
-  model: 'deepseek-v4-pro',
+  model: DEEPSEEK_DEFAULT_MODEL,
 }
 
 function getPackageVersion() {
@@ -184,6 +210,121 @@ function logVsCodeOutputChunk(buffer, chunk) {
   }
 }
 
+function toApiModel(model) {
+  return DEEPSEEK_MODEL_ALIASES[model] || model
+}
+
+function fromApiModel(model) {
+  return Object.entries(DEEPSEEK_MODEL_ALIASES).find(([, apiModel]) => apiModel === model)?.[0] || model
+}
+
+function modelSupportsEffort(model) {
+  return model === DEEPSEEK_DEFAULT_MODEL
+}
+
+function normalizeEffort(effort) {
+  if (typeof effort !== 'string') return undefined
+  const normalized = effort.toLowerCase()
+  return DEEPSEEK_EFFORT_INPUT_LEVELS.includes(normalized) ? normalized : undefined
+}
+
+function readCurrentEffort() {
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const effort = normalizeEffort(settings?.deepseek?.effort)
+    return effort === 'auto' ? DEEPSEEK_DEFAULT_EFFORT : effort || DEEPSEEK_DEFAULT_EFFORT
+  } catch {
+    return DEEPSEEK_DEFAULT_EFFORT
+  }
+}
+
+function readCurrentModel() {
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    const model = typeof settings?.model === 'string' && settings.model ? settings.model : DEEPSEEK_DEFAULT_MODEL
+    return fromApiModel(model)
+  } catch {
+    return DEEPSEEK_DEFAULT_MODEL
+  }
+}
+
+function persistCurrentModel(model) {
+  const displayModel = fromApiModel(model)
+  if (!DEEPSEEK_MODELS.some(item => item.value === displayModel)) return
+  const apiModel = toApiModel(displayModel)
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    settings.model = apiModel
+    settings.env = {
+      ...(settings.env || {}),
+      CLAUDE_CODE_SUBAGENT_MODEL: apiModel,
+      ANTHROPIC_BASE_URL: defaultSettings.env.ANTHROPIC_BASE_URL,
+    }
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, {
+      mode: 0o600,
+    })
+    logVsCodeShim('model_persisted', { model: displayModel, apiModel })
+  } catch (error) {
+    logVsCodeShim('model_persist_error', { model, message: error.message })
+  }
+}
+
+function persistCurrentEffort(effort) {
+  const normalizedEffort = normalizeEffort(effort)
+  if (!normalizedEffort) return
+  try {
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
+    settings.deepseek = {
+      ...(settings.deepseek || {}),
+      effort: normalizedEffort,
+    }
+    writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, {
+      mode: 0o600,
+    })
+    logVsCodeShim('effort_persisted', { effort: normalizedEffort })
+  } catch (error) {
+    logVsCodeShim('effort_persist_error', { effort: normalizedEffort, message: error.message })
+  }
+}
+
+function writeControlSuccess(message, response = {}) {
+  process.stdout.write(
+    `${JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: message.request_id,
+        response,
+      },
+    })}\n`,
+  )
+}
+
+function getRequestModel(message) {
+  return message.request?.model || message.request?.modelId || message.request?.value
+}
+
+function effortFromThinkingTokens(tokens) {
+  if (tokens === null) return 'auto'
+  if (!Number.isInteger(tokens)) return undefined
+  if (tokens <= 50) return 'low'
+  if (tokens <= 85) return 'medium'
+  if (tokens <= 100) return 'high'
+  return 'max'
+}
+
+function getRequestEffort(message) {
+  if (Object.hasOwn(message.request || {}, 'max_thinking_tokens')) {
+    return effortFromThinkingTokens(message.request.max_thinking_tokens)
+  }
+  return (
+    message.request?.effort ||
+    message.request?.effortLevel ||
+    message.request?.level ||
+    message.request?.value
+  )
+}
+
 function buildInitializeResponse(message, childPid) {
   return {
     type: 'control_response',
@@ -193,7 +334,7 @@ function buildInitializeResponse(message, childPid) {
       response: {
         commands: [],
         agents: [],
-        models: [],
+        models: DEEPSEEK_MODELS,
         output_style: 'default',
         available_output_styles: ['default'],
         account: {
@@ -207,8 +348,11 @@ function buildInitializeResponse(message, childPid) {
 }
 
 function buildGetSettingsResponse(message) {
+  const currentModel = readCurrentModel()
+  const supportsEffort = modelSupportsEffort(currentModel)
+  const currentEffort = supportsEffort ? readCurrentEffort() : null
   const effectiveSettings = {
-    model: 'deepseek-v4-pro',
+    model: currentModel,
     env: {
       ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic',
     },
@@ -233,12 +377,24 @@ function buildGetSettingsResponse(message) {
           },
         ],
         applied: {
-          model: 'deepseek-v4-pro',
-          effort: null,
+          model: currentModel,
+          effort: currentEffort,
         },
       },
     },
   }
+}
+
+function removeArgWithValue(args, name) {
+  const result = []
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === name) {
+      index++
+      continue
+    }
+    result.push(args[index])
+  }
+  return result
 }
 
 function getForwardArgs() {
@@ -249,7 +405,10 @@ function getForwardArgs() {
     args.includes('stream-json') &&
     args.includes('--input-format')
   ) {
-    const vscodeArgs = [...args]
+    const vscodeArgs = removeArgWithValue(args, '--resume')
+    if (vscodeArgs.length !== args.length) {
+      logVsCodeShim('resume_arg_stripped', { originalArgs: args.length, forwardArgs: vscodeArgs.length })
+    }
     if (!vscodeArgs.includes('--print') && !vscodeArgs.includes('-p')) {
       vscodeArgs.unshift('--print')
     }
@@ -471,9 +630,30 @@ if (!existsSync(settingsPath)) {
   }
 }
 
-function resolveConfiguredApiKey() {
-  if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: 'env' }
+function readConfigApiKey() {
+  try {
+    const config = JSON.parse(readFileSync(deepseekClaudeConfigPath, 'utf8'))
+    if (typeof config?.env?.ANTHROPIC_API_KEY === 'string' && config.env.ANTHROPIC_API_KEY) {
+      return { key: config.env.ANTHROPIC_API_KEY, source: 'config_env' }
+    }
+    if (typeof config?.apiKeyHelper === 'string' && config.apiKeyHelper.trim()) {
+      const key = execSync(config.apiKeyHelper, {
+        encoding: 'utf8',
+        env: process.env,
+        cwd: originalCwd,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5000,
+      }).trim()
+      if (key) return { key, source: 'config_apiKeyHelper' }
+    }
+  } catch {
+    return undefined
+  }
 
+  return undefined
+}
+
+function readSettingsApiKey() {
   try {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'))
     if (typeof settings?.env?.ANTHROPIC_API_KEY === 'string' && settings.env.ANTHROPIC_API_KEY) {
@@ -496,6 +676,18 @@ function resolveConfiguredApiKey() {
   return undefined
 }
 
+function resolveConfiguredApiKey() {
+  if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
+    const isolatedApiKey = readSettingsApiKey() || readConfigApiKey()
+    if (isolatedApiKey) return isolatedApiKey
+    if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: 'env' }
+    return undefined
+  }
+
+  if (process.env.ANTHROPIC_API_KEY) return { key: process.env.ANTHROPIC_API_KEY, source: 'env' }
+  return readSettingsApiKey() || readConfigApiKey()
+}
+
 process.env.CLAUDE_CONFIG_DIR = configDir
 process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST = '1'
 process.env.ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'
@@ -507,7 +699,7 @@ delete process.env.ANTHROPIC_AUTH_TOKEN
 delete process.env.CLAUDE_CODE_OAUTH_TOKEN
 process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ||= '1'
 process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK ||= '1'
-process.env.CLAUDE_CODE_SUBAGENT_MODEL ||= 'deepseek-v4-pro'
+process.env.CLAUDE_CODE_SUBAGENT_MODEL ||= toApiModel(readCurrentModel())
 process.env.CLAUDE_CODE_USE_NATIVE_FILE_SEARCH ||= '1'
 if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
   process.env.MCP_TIMEOUT = process.env.DEEPSEEK_VSCODE_MCP_TIMEOUT || '5000'
@@ -558,6 +750,40 @@ logVsCodeShim('child_spawned', {
   stderr: Boolean(child.stderr),
 })
 
+let childExited = false
+let forwardingSignal = false
+
+function signalChild(signal, reason) {
+  if (childExited || !child.pid) return
+  try {
+    logVsCodeShim('child_signal_send', { signal, reason, pid: child.pid })
+    child.kill(signal)
+  } catch (error) {
+    logVsCodeShim('child_signal_error', { signal, reason, message: error.message })
+  }
+}
+
+function endChildInput(reason) {
+  if (!child.stdin || child.stdin.destroyed) return
+  try {
+    logVsCodeShim('child_stdin_end_request', { reason })
+    child.stdin.end()
+  } catch (error) {
+    logVsCodeShim('child_stdin_end_error', { reason, message: error.message })
+  }
+}
+
+function handleParentSignal(signal) {
+  logVsCodeShim('parent_signal', { signal })
+  forwardingSignal = true
+  signalChild(signal, 'parent_signal')
+  setTimeout(() => process.exit(128), 1000).unref()
+}
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => handleParentSignal(signal))
+}
+
 if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
   let bufferedInput = ''
 
@@ -568,6 +794,7 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
       const originalLine = bufferedInput.slice(0, newlineIndex)
       const line = originalLine.trim()
       bufferedInput = bufferedInput.slice(newlineIndex + 1)
+      let shouldForward = true
       let forwardedLine = originalLine
       if (line) {
         try {
@@ -577,12 +804,41 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
           if (normalizedMessage !== message) {
             forwardedLine = JSON.stringify(normalizedMessage)
           }
+          if (message.type === 'control_request') {
+            if (message.request?.subtype === 'set_model') {
+              const model = getRequestModel(message)
+              if (model) {
+                const forwardedMessage = {
+                  ...normalizedMessage,
+                  request: {
+                    ...(normalizedMessage.request || {}),
+                    model: toApiModel(model),
+                    value: toApiModel(model),
+                  },
+                }
+                forwardedLine = JSON.stringify(forwardedMessage)
+              }
+            } else if (message.request?.subtype === 'update_settings' && message.request?.settings?.model) {
+              const forwardedMessage = {
+                ...normalizedMessage,
+                request: {
+                  ...(normalizedMessage.request || {}),
+                  settings: {
+                    ...normalizedMessage.request.settings,
+                    model: toApiModel(message.request.settings.model),
+                  },
+                },
+              }
+              forwardedLine = JSON.stringify(forwardedMessage)
+            }
+          }
           if (
             message.type === 'control_request' &&
             message.request?.subtype === 'initialize' &&
             message.request_id
           ) {
             process.stdout.write(`${JSON.stringify(buildInitializeResponse(message, child.pid))}\n`)
+            shouldForward = false
             logVsCodeShim('initialize_proxy_response', { requestId: message.request_id })
           } else if (
             message.type === 'control_request' &&
@@ -590,13 +846,67 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
             message.request_id
           ) {
             process.stdout.write(`${JSON.stringify(buildGetSettingsResponse(message))}\n`)
+            shouldForward = false
             logVsCodeShim('get_settings_proxy_response', { requestId: message.request_id })
+          } else if (
+            message.type === 'control_request' &&
+            message.request?.subtype === 'set_model' &&
+            message.request_id
+          ) {
+            const model = getRequestModel(message)
+            persistCurrentModel(model)
+            writeControlSuccess(message, { model: readCurrentModel() })
+            shouldForward = false
+            logVsCodeShim('set_model_proxy_response', { requestId: message.request_id, model })
+          } else if (
+            message.type === 'control_request' &&
+            message.request?.subtype === 'update_settings' &&
+            message.request_id
+          ) {
+            const model = message.request?.settings?.model
+            if (model) persistCurrentModel(model)
+            writeControlSuccess(message, buildGetSettingsResponse(message).response.response)
+            shouldForward = false
+            logVsCodeShim('update_settings_proxy_response', { requestId: message.request_id, model })
+          } else if (
+            message.type === 'control_request' &&
+            (message.request?.subtype === 'set_max_thinking_tokens' ||
+              message.request?.subtype === 'set_effort') &&
+            message.request_id
+          ) {
+            const effort = getRequestEffort(message)
+            persistCurrentEffort(effort)
+            writeControlSuccess(message, { effort: readCurrentEffort() })
+            shouldForward = false
+            logVsCodeShim('set_effort_proxy_response', { requestId: message.request_id, effort })
+          } else if (
+            message.type === 'control_request' &&
+            message.request?.subtype === 'interrupt' &&
+            message.request_id
+          ) {
+            logVsCodeShim('interrupt_received', { requestId: message.request_id })
+            shouldForward = false
+            signalChild('SIGINT', 'control_interrupt')
+          } else if (
+            message.type === 'control_request' &&
+            message.request?.subtype === 'end_session' &&
+            message.request_id
+          ) {
+            logVsCodeShim('end_session_received', {
+              requestId: message.request_id,
+              reason: message.request?.reason,
+            })
+            shouldForward = false
+            endChildInput('control_end_session')
+            signalChild('SIGTERM', 'control_end_session')
           }
         } catch (error) {
           logVsCodeShim('control_proxy_parse_error', { message: error.message })
         }
       }
-      forwardedLines.push(`${forwardedLine}\n`)
+      if (shouldForward) {
+        forwardedLines.push(`${forwardedLine}\n`)
+      }
       newlineIndex = bufferedInput.indexOf('\n')
     }
     return forwardedLines.join('')
@@ -672,8 +982,9 @@ child.on('error', error => {
 })
 
 child.on('exit', (code, signal) => {
+  childExited = true
   logVsCodeShim('child_exit', { code, signal })
-  if (signal) {
+  if (signal && !forwardingSignal) {
     process.kill(process.pid, signal)
     return
   }
