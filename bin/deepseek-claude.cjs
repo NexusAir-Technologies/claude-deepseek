@@ -287,6 +287,38 @@ function persistCurrentEffort(effort) {
   }
 }
 
+function rewriteVsCodeOutputLine(line) {
+  try {
+    const message = JSON.parse(line)
+    if (
+      message?.type !== 'control_response' ||
+      message.response?.subtype !== 'success' ||
+      !message.response?.response ||
+      !Array.isArray(message.response.response.models)
+    ) {
+      return line
+    }
+
+    message.response.response = {
+      ...message.response.response,
+      models: DEEPSEEK_MODELS,
+      account: {
+        ...(message.response.response.account || {}),
+        apiProvider: 'anthropic',
+        apiKeySource: 'DeepSeek',
+      },
+    }
+    logVsCodeShim('initialize_response_rewritten', {
+      requestId: message.response.request_id,
+      commandCount: message.response.response.commands?.length,
+      agentCount: message.response.response.agents?.length,
+    })
+    return JSON.stringify(message)
+  } catch {
+    return line
+  }
+}
+
 function writeControlSuccess(message, response = {}) {
   process.stdout.write(
     `${JSON.stringify({
@@ -323,28 +355,6 @@ function getRequestEffort(message) {
     message.request?.level ||
     message.request?.value
   )
-}
-
-function buildInitializeResponse(message, childPid) {
-  return {
-    type: 'control_response',
-    response: {
-      subtype: 'success',
-      request_id: message.request_id,
-      response: {
-        commands: [],
-        agents: [],
-        models: DEEPSEEK_MODELS,
-        output_style: 'default',
-        available_output_styles: ['default'],
-        account: {
-          apiProvider: 'anthropic',
-          apiKeySource: 'DeepSeek',
-        },
-        pid: childPid,
-      },
-    },
-  }
 }
 
 function buildGetSettingsResponse(message) {
@@ -397,6 +407,41 @@ function removeArgWithValue(args, name) {
   return result
 }
 
+function hasArg(args, name) {
+  return args.includes(name)
+}
+
+function writeVsCodeMcpConfigFile() {
+  const config = readJson(deepseekClaudeConfigPath, {})
+  const globalServers = filterDeepSeekMcpServers(config.mcpServers) || {}
+  const projectServers = filterDeepSeekMcpServers(config.projects?.[originalCwd]?.mcpServers) || {}
+  const mcpServers = { ...globalServers, ...projectServers }
+  if (Object.keys(mcpServers).length === 0) return undefined
+
+  const mcpConfigPath = join(configDir, 'vscode-mcp-config.json')
+  writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers }, null, 2)}\n`, { mode: 0o600 })
+  return mcpConfigPath
+}
+
+function appendVsCodeContextArgs(args) {
+  const nextArgs = [...args]
+
+  if (!hasArg(nextArgs, '--mcp-config')) {
+    const mcpConfigPath = writeVsCodeMcpConfigFile()
+    if (mcpConfigPath) {
+      nextArgs.push('--mcp-config', mcpConfigPath)
+      logVsCodeShim('mcp_config_arg_added', { path: mcpConfigPath, serverCount: Object.keys(readJson(mcpConfigPath, {}).mcpServers || {}).length })
+    }
+  }
+
+  if (!hasArg(nextArgs, '--add-dir')) {
+    nextArgs.push('--add-dir', homedir(), originalCwd)
+    logVsCodeShim('add_dir_arg_added', { dirs: [homedir(), originalCwd] })
+  }
+
+  return nextArgs
+}
+
 function getForwardArgs() {
   const args = process.argv.slice(2)
   if (
@@ -405,7 +450,7 @@ function getForwardArgs() {
     args.includes('stream-json') &&
     args.includes('--input-format')
   ) {
-    const vscodeArgs = removeArgWithValue(args, '--resume')
+    let vscodeArgs = removeArgWithValue(args, '--resume')
     if (vscodeArgs.length !== args.length) {
       logVsCodeShim('resume_arg_stripped', { originalArgs: args.length, forwardArgs: vscodeArgs.length })
     }
@@ -421,6 +466,7 @@ function getForwardArgs() {
     if (!vscodeArgs.includes('--bare')) {
       vscodeArgs.push('--bare')
     }
+    vscodeArgs = appendVsCodeContextArgs(vscodeArgs)
     return vscodeArgs
   }
   return args
@@ -834,14 +880,6 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
           }
           if (
             message.type === 'control_request' &&
-            message.request?.subtype === 'initialize' &&
-            message.request_id
-          ) {
-            process.stdout.write(`${JSON.stringify(buildInitializeResponse(message, child.pid))}\n`)
-            shouldForward = false
-            logVsCodeShim('initialize_proxy_response', { requestId: message.request_id })
-          } else if (
-            message.type === 'control_request' &&
             message.request?.subtype === 'get_settings' &&
             message.request_id
           ) {
@@ -939,20 +977,37 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
 
   const childStdoutBuffer = { value: '' }
   child.stdout.on('data', chunk => {
-    logVsCodeOutputChunk(childStdoutBuffer, chunk)
-    process.stdout.write(chunk)
+    childStdoutBuffer.value += chunk.toString()
+    let newlineIndex = childStdoutBuffer.value.indexOf('\n')
+    while (newlineIndex !== -1) {
+      const line = childStdoutBuffer.value.slice(0, newlineIndex)
+      childStdoutBuffer.value = childStdoutBuffer.value.slice(newlineIndex + 1)
+      if (line.trim()) {
+        try {
+          logVsCodeShim('child_stdout_message', describeVsCodeOutputMessage(JSON.parse(line.trim())))
+        } catch {
+          logVsCodeShim('child_stdout_non_json', { length: line.length })
+        }
+      }
+      process.stdout.write(`${rewriteVsCodeOutputLine(line)}\n`)
+      newlineIndex = childStdoutBuffer.value.indexOf('\n')
+    }
   })
   child.stdout.on('end', () => {
-    if (childStdoutBuffer.value.trim()) {
-      try {
-        logVsCodeShim(
-          'child_stdout_message',
-          describeVsCodeOutputMessage(JSON.parse(childStdoutBuffer.value.trim())),
-        )
-      } catch {
-        logVsCodeShim('child_stdout_trailing_non_json', {
-          length: childStdoutBuffer.value.trim().length,
-        })
+    if (childStdoutBuffer.value) {
+      const line = childStdoutBuffer.value
+      if (line.trim()) {
+        try {
+          logVsCodeShim(
+            'child_stdout_message',
+            describeVsCodeOutputMessage(JSON.parse(line.trim())),
+          )
+        } catch {
+          logVsCodeShim('child_stdout_trailing_non_json', {
+            length: line.trim().length,
+          })
+        }
+        process.stdout.write(rewriteVsCodeOutputLine(line))
       }
       childStdoutBuffer.value = ''
     }
