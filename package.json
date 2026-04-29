@@ -1,6 +1,6 @@
 {
   "name": "@nexusair-technologies/claude-deepseek",
-  "version": "0.2.2-beta.5",
+  "version": "0.2.2-beta.6",
   "private": false,
   "description": "DeepSeek Claude CLI with isolated configuration directory.",
   "license": "SEE LICENSE IN LICENSE.md",

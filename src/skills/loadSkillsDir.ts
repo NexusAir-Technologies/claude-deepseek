@@ -51,6 +51,7 @@ import { logError } from '../utils/log.js'
 import {
   extractDescriptionFromMarkdown,
   getProjectDirsUpToHome,
+  loadMarkdownFiles,
   loadMarkdownFilesForSubdir,
   type MarkdownFile,
   parseSlashCommandToolsFromFrontmatter,
@@ -623,6 +624,72 @@ async function loadSkillsFromCommandsDir(
   }
 }
 
+async function loadSkillsFromExplicitCommandsDir(
+  commandsDir: string,
+  source: SettingSource,
+): Promise<SkillWithPath[]> {
+  try {
+    const markdownFiles = await loadMarkdownFiles(commandsDir)
+    const processedFiles = transformSkillFiles(
+      markdownFiles.map(file => ({
+        ...file,
+        baseDir: commandsDir,
+        source,
+      })),
+    )
+
+    const skills: SkillWithPath[] = []
+
+    for (const {
+      baseDir,
+      filePath,
+      frontmatter,
+      content,
+      source: fileSource,
+    } of processedFiles) {
+      try {
+        const isSkillFormat = isSkillFile(filePath)
+        const skillDirectory = isSkillFormat ? dirname(filePath) : undefined
+        const cmdName = getCommandName({
+          baseDir,
+          filePath,
+          frontmatter,
+          content,
+          source: fileSource,
+        })
+
+        const parsed = parseSkillFrontmatterFields(
+          frontmatter,
+          content,
+          cmdName,
+          'Custom command',
+        )
+
+        skills.push({
+          skill: createSkillCommand({
+            ...parsed,
+            skillName: cmdName,
+            displayName: undefined,
+            markdownContent: content,
+            source: fileSource,
+            baseDir: skillDirectory,
+            loadedFrom: 'commands_DEPRECATED',
+            paths: undefined,
+          }),
+          filePath,
+        })
+      } catch (error) {
+        logError(error)
+      }
+    }
+
+    return skills
+  } catch (error) {
+    logError(error)
+    return []
+  }
+}
+
 /**
  * Loads all skills from both /skills/ and legacy /commands/ directories.
  *
@@ -665,16 +732,28 @@ export const getSkillDirCommands = memoize(
         )
         return []
       }
-      const additionalSkillsNested = await Promise.all(
-        additionalDirs.map(dir =>
-          loadSkillsFromSkillsDir(
-            join(dir, '.claude', 'skills'),
-            'projectSettings',
+      const [additionalSkillsNested, additionalCommandsNested] = await Promise.all([
+        Promise.all(
+          additionalDirs.map(dir =>
+            loadSkillsFromSkillsDir(
+              join(dir, '.claude', 'skills'),
+              'projectSettings',
+            ),
           ),
         ),
-      )
-      // No dedup needed — explicit dirs, user controls uniqueness.
-      return additionalSkillsNested.flat().map(s => s.skill)
+        Promise.all(
+          additionalDirs.map(dir =>
+            loadSkillsFromExplicitCommandsDir(
+              join(dir, '.claude', 'commands'),
+              'projectSettings',
+            ),
+          ),
+        ),
+      ])
+      return [
+        ...additionalSkillsNested.flat().map(s => s.skill),
+        ...additionalCommandsNested.flat().map(s => s.skill),
+      ]
     }
 
     // Load from /skills/ directories, additional dirs, and legacy /commands/ in parallel

@@ -543,7 +543,7 @@ async function findMarkdownFilesNative(
  * @param dir Directory (eg. "~/.claude/commands")
  * @returns Array of parsed markdown files with metadata
  */
-async function loadMarkdownFiles(dir: string): Promise<
+export async function loadMarkdownFiles(dir: string): Promise<
   {
     filePath: string
     frontmatter: FrontmatterData
