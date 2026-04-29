@@ -53,6 +53,7 @@ const DEEPSEEK_MODELS = [
     description: 'DeepSeek chat model',
   },
 ]
+const forwardedVsCodeEnvelopeIds = new Set()
 
 const defaultSettings = {
   $schema: 'https://json.schemastore.org/claude-code-settings.json',
@@ -150,12 +151,50 @@ function normalizeVsCodeUserMessage(message) {
   return normalized
 }
 
+function getVsCodeEnvelopeMessageId(message, innerMessage) {
+  return innerMessage?.uuid || innerMessage?.request_id || message?.uuid || message?.request_id
+}
+
+function unwrapVsCodeEnvelopeMessage(message) {
+  if (message?.type !== 'io_message' || !message.message || typeof message.message !== 'object') {
+    return { message, shouldForward: true }
+  }
+
+  const innerMessage = message.message
+  const messageId = getVsCodeEnvelopeMessageId(message, innerMessage)
+  if (messageId) {
+    const dedupeKey = `${message.channelId || ''}:${messageId}`
+    if (forwardedVsCodeEnvelopeIds.has(dedupeKey)) {
+      logVsCodeShim('io_message_duplicate_skipped', { channelId: message.channelId, done: message.done, messageId })
+      return { message: innerMessage, shouldForward: false }
+    }
+    forwardedVsCodeEnvelopeIds.add(dedupeKey)
+    if (forwardedVsCodeEnvelopeIds.size > 1000) forwardedVsCodeEnvelopeIds.clear()
+  }
+
+  logVsCodeShim('io_message_unwrapped', {
+    channelId: message.channelId,
+    done: message.done,
+    innerType: innerMessage.type,
+    messageId,
+  })
+  return { message: innerMessage, shouldForward: true }
+}
+
 function describeVsCodeInputMessage(message) {
   const summary = {
     type: message?.type,
     subtype: message?.request?.subtype,
     requestId: message?.request_id,
     uuid: message?.uuid,
+  }
+
+  if (message?.type === 'io_message') {
+    summary.channelId = message.channelId
+    summary.done = message.done
+    summary.innerType = message.message?.type
+    summary.innerUuid = message.message?.uuid
+    summary.innerRequestId = message.message?.request_id
   }
 
   if (message?.type === 'user') {
@@ -844,10 +883,13 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
       let forwardedLine = originalLine
       if (line) {
         try {
-          const message = JSON.parse(line)
-          logVsCodeShim('stdin_message', describeVsCodeInputMessage(message))
-          const normalizedMessage = normalizeVsCodeUserMessage(message)
-          if (normalizedMessage !== message) {
+          const parsedMessage = JSON.parse(line)
+          logVsCodeShim('stdin_message', describeVsCodeInputMessage(parsedMessage))
+          const unwrappedMessage = unwrapVsCodeEnvelopeMessage(parsedMessage)
+          const message = unwrappedMessage.message
+          shouldForward = unwrappedMessage.shouldForward
+          let normalizedMessage = normalizeVsCodeUserMessage(message)
+          if (normalizedMessage !== parsedMessage) {
             forwardedLine = JSON.stringify(normalizedMessage)
           }
           if (message.type === 'control_request') {
