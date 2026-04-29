@@ -132,7 +132,7 @@ DeepSeekClaude 是一个在终端中使用的 AI 助手。
 如果你还没有 DeepSeek API Key，可以先参考 DeepSeek 官方中文文档：  
 https://api-docs.deepseek.com/zh-cn/
 
-> 如果在执行 `npm install -g @nexusair-technologies/claude-deepseek@beta` 时出现下载缓慢、超时或安装失败，通常与当前网络环境有关。  
+> 如果在执行 `npm install -g @nexusair-technologies/claude-deepseek` 时出现下载缓慢、超时或安装失败，通常与当前网络环境有关。  
 >  
 > 如果在启动后出现无法连接 API 的情况，也可能与网络访问限制有关。  
 >  
@@ -148,7 +148,7 @@ https://api-docs.deepseek.com/zh-cn/
 2. 选择一种终端环境：**WSL（Linux）** 或 **PowerShell**
 3. 安装 **Node.js LTS**
 4. 确认 `node -v` 和 `npm -v` 能正常输出版本号
-5. 执行 `npm install -g @nexusair-technologies/claude-deepseek@beta`
+5. 执行 `npm install -g @nexusair-technologies/claude-deepseek`
 6. 执行 `deepseek-claude`
 7. 输入 DeepSeek API Key
 8. 开始使用
@@ -323,7 +323,7 @@ winget install OpenJS.NodeJS.LTS
 在终端中执行：
 
 ```bash
-npm install -g @nexusair-technologies/claude-deepseek@beta
+npm install -g @nexusair-technologies/claude-deepseek
 ```
 
 等待安装完成。
