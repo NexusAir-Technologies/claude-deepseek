@@ -182,6 +182,38 @@ function unwrapVsCodeEnvelopeMessage(message) {
   return { message: innerMessage, shouldForward: true }
 }
 
+function shouldKeepVsCodeSdkMcp() {
+  return process.env.DEEPSEEK_VSCODE_KEEP_SDK_MCP === '1'
+}
+
+function filterVsCodeSdkMcpServers(message) {
+  if (
+    shouldKeepVsCodeSdkMcp() ||
+    message?.type !== 'control_request' ||
+    message.request?.subtype !== 'initialize' ||
+    !Array.isArray(message.request.sdkMcpServers)
+  ) {
+    return message
+  }
+
+  const originalServers = message.request.sdkMcpServers
+  const filteredServers = originalServers.filter(serverName => serverName !== 'claude-vscode')
+  if (filteredServers.length === originalServers.length) return message
+
+  logVsCodeShim('sdk_mcp_servers_filtered', {
+    filtered: originalServers.filter(serverName => serverName === 'claude-vscode'),
+    keptCount: filteredServers.length,
+  })
+
+  return {
+    ...message,
+    request: {
+      ...message.request,
+      sdkMcpServers: filteredServers,
+    },
+  }
+}
+
 function describeVsCodeInputMessage(message) {
   const summary = {
     type: message?.type,
@@ -901,6 +933,7 @@ if (process.env.DEEPSEEK_CLAUDE_VSCODE === '1') {
           const message = unwrappedMessage.message
           shouldForward = unwrappedMessage.shouldForward
           let normalizedMessage = normalizeVsCodeUserMessage(message)
+          normalizedMessage = filterVsCodeSdkMcpServers(normalizedMessage)
           if (normalizedMessage !== parsedMessage) {
             forwardedLine = JSON.stringify(normalizedMessage)
           }
